@@ -23,24 +23,31 @@ public class PlayerController : ControllerBase
     /// Create Player
     /// </summary>
     [HttpPost]
-    public async Task<IActionResult> PostAsync()
+    public async Task<IActionResult> PostAsync(string name, string position, IEnumerable<PlayerSkill> playerSkills)
     {
-        PlayerSkill playerSkill = new PlayerSkill() { Id = 1, PlayerId = 1, Skill = "Making chicken nuggets", Value = 0 };
-        await m_dbContext.PlayerSkills.AddAsync(playerSkill);
-
-        Player newPlayer = new Player()
+        try
         {
-            Id = 1,
-            Name = "Juan",
-            PlayerSkills = m_dbContext.PlayerSkills.Where(x => x.PlayerId == 1).ToList(),
-            Position = "Benchwarmer"
-        };
+            PlayerValidationCommon.ValidatePlayerName(name);
+            PlayerValidationCommon.ValidatePlayerPosition(position);
+            PlayerValidationCommon.ValidatePlayerSkills((List<PlayerSkill>)playerSkills);
 
-        await m_dbContext.Players.AddAsync(newPlayer);
+            Player newPlayer = new Player()
+            {
+                Name = name,
+                PlayerSkills = playerSkills,
+                Position = position
+            };
 
-        await m_dbContext.SaveChangesAsync();
+            await m_dbContext.Players.AddAsync(newPlayer);
 
-        return Ok(newPlayer);
+            await m_dbContext.SaveChangesAsync();
+
+            return Ok(m_dbContext.Players.FindAsync(newPlayer.Id).Result);
+        }
+        catch (Exception e)
+        {
+            return BadRequest(e.Message);
+        }
     }
 
     /// <summary>
@@ -49,9 +56,16 @@ public class PlayerController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAllAsync()
     {
-        var players = await m_dbContext.Players.Include(p => p.PlayerSkills).ToListAsync();
+        try
+        {
+            var players = await m_dbContext.Players.Include(p => p.PlayerSkills).ToListAsync();
 
-        return Ok(players);
+            return Ok(players);
+        }
+        catch(Exception e)
+        {
+            return BadRequest(e.Message);
+        }
     }
 
     /// <summary>
@@ -62,14 +76,18 @@ public class PlayerController : ControllerBase
     {
         try
         {
-            var possiblePlayers = await m_dbContext.Players.Include(p => p.PlayerSkills).Where(x => x.Id == id).ToListAsync();
+            List<Player> possiblePlayers = await m_dbContext.Players.Include(p => p.PlayerSkills).Where(x => x.Id == id).ToListAsync();
+            if(possiblePlayers.Count == 0)
+            {
+                throw new Exception("Could not find player with ID: " + id);
+            }
             var player = possiblePlayers.First();
 
             return Ok(player);
         }
-        catch
+        catch(Exception e)
         {
-            return NoContent();
+            return BadRequest(e.Message);
         }
     }
 
@@ -77,21 +95,39 @@ public class PlayerController : ControllerBase
     /// Upate Player
     /// </summary>
     [HttpPut("{id}")]
-    public async Task<IActionResult> PutAsync(int id)
+    public async Task<IActionResult> PutAsync(int id, string name = null, string position = null, IEnumerable<PlayerSkill> playerSkills = null)
     {
         try
         {
             var possiblePlayers = await m_dbContext.Players.Include(p => p.PlayerSkills).Where(x => x.Id == id).ToListAsync();
+            if (possiblePlayers.Count == 0)
+            {
+                throw new Exception("Could not find player with ID: " + id);
+            }
             var player = possiblePlayers.First();
 
-            player.Position = "Da boss";
+            if(name != null)
+            {
+                player.Name = name;
+            }
+            if(position != null)
+            {
+                PlayerValidationCommon.ValidatePlayerPosition(position);
+                player.Position = position;
+            }
+            if(playerSkills != null)
+            {
+                PlayerValidationCommon.ValidatePlayerSkills((List<PlayerSkill>)playerSkills);
+
+                player.PlayerSkills = playerSkills;
+            }
 
             await m_dbContext.SaveChangesAsync();
-            return Ok(player);
+            return Ok(m_dbContext.Players.FindAsync(id).Result);
         }
-        catch
+        catch(Exception e)
         {
-            return NoContent();
+            return BadRequest(e.Message);
         }
     }
 
@@ -104,6 +140,10 @@ public class PlayerController : ControllerBase
         try
         {
             var possiblePlayers = await m_dbContext.Players.Include(p => p.PlayerSkills).Where(x => x.Id == id).ToListAsync();
+            if (possiblePlayers.Count == 0)
+            {
+                throw new Exception("Could not find player with ID: " + id);
+            }
             var player = possiblePlayers.First();
             var skill = await m_dbContext.PlayerSkills.FirstAsync(x => x.PlayerId == player.Id);
 
@@ -111,11 +151,11 @@ public class PlayerController : ControllerBase
             m_dbContext.Players.Remove(player);
             await m_dbContext.SaveChangesAsync();
 
-            return Ok(m_dbContext.Players);
+            return Ok();
         }
-        catch
+        catch(Exception e)
         {
-            return NoContent();
+            return BadRequest(e.Message);
         }
     }
 }
